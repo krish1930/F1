@@ -46,11 +46,13 @@ chmod +x ./ngrok
 rm ngrok-v3-stable-linux-amd64.zip
 
 echo "### Starting ngrok proxy for port 22 ###"
+# Remove old log file if exists to ensure a clean capture
 rm -f .ngrok.log
 
+# Set ngrok authtoken
 ./ngrok authtoken "$NGROK_AUTH_TOKEN" > /dev/null 2>&1
 
-# THIS IS THE CRITICAL FIX: Run ngrok in the background AND redirect its output to .ngrok.log
+# THIS IS THE CRITICAL LINE: Start ngrok in the background and redirect its output to .ngrok.log
 # The '&' at the end is essential for it to run in the background.
 stdbuf -oL ./ngrok tcp 22 > .ngrok.log 2>&1 & 
 

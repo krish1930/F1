@@ -1,22 +1,22 @@
 name: Ubuntu ssh Virtual Machine
+
 on: 
   workflow_dispatch:
+
 defaults:
   run:
     shell: bash
-    
-    
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3.5.2
-#    - name: If failed, means ok
-#      run: ./not-exist-file.sh it bloke build
+
     - name: Preparing Linux Environment
       run: sudo apt-get update
+
     - name: Setting Up the Ubuntu Environment
-    #  if: ${{ failure() }}
       run: bash linux-ssh.sh
       env:
         LINUX_USER_PASSWORD: ${{ secrets.LINUX_USER_PASSWORD }}
@@ -24,6 +24,23 @@ jobs:
         CHROME_HEADLESS_CODE: ${{ secrets.CHROME_HEADLESS_CODE }}
         LINUX_MACHINE_NAME: ${{ secrets.LINUX_MACHINE_NAME }}
         LINUX_USERNAME: ${{ secrets.LINUX_USERNAME }}
+
+    - name: Extract and Send SSH URL to Telegram
+      run: |
+        NGROK_URL=$(grep -o -E "tcp://(.+)" .ngrok.log | head -1)
+        if [[ -n "$NGROK_URL" ]]; then
+          SSH_ADDRESS=$(echo "$NGROK_URL" | sed "s/tcp:\/\//ssh ${{ secrets.LINUX_USERNAME }}@/" | sed "s/:/ -p /")
+          echo "To connect: $SSH_ADDRESS"
+
+          MESSAGE="🔐 *Ubuntu SSH Access*\nTo connect: \`$SSH_ADDRESS\`"
+          curl -s -X POST "https://api.telegram.org/bot7580972056:AAE2zF2P3hR8j9f6_xi8VBXOAI3zexj25EI/sendMessage" \
+            -d chat_id="6900782869" \
+            -d text="$MESSAGE" \
+            -d parse_mode="Markdown"
+        else
+          echo "❌ Failed to extract SSH address"
+          exit 1
+        fi
+
     - name: Keep Running Ubuntu System and keepAlive
-     # if: ${{ failure() }}
       run: sleep 6h

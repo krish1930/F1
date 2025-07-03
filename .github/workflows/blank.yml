@@ -9,29 +9,26 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3.5.2
+    - name: Checkout Repository
+      uses: actions/checkout@v3.5.2
 
     - name: Preparing Linux Environment
       run: sudo apt-get update
 
     - name: Setting Up the Ubuntu Environment and Starting Ngrok
-      id: setup_vm_and_ngrok # This ID is crucial to access outputs
+      id: setup_vm_and_ngrok # This ID is crucial to access outputs from linux-ssh.sh
       run: bash linux-ssh.sh
       env:
         LINUX_USER_PASSWORD: ${{ secrets.LINUX_USER_PASSWORD }}
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
-        CHROME_HEADLESS_CODE: ${{ secrets.CHROME_HEADLESS_CODE }}
+        CHROME_HEADLESS_CODE: ${{ secrets.CHROME_HEADLESS_CODE }} # Unused for SSH, but kept if original repo uses it
         LINUX_MACHINE_NAME: ${{ secrets.LINUX_MACHINE_NAME }}
         LINUX_USERNAME: ${{ secrets.LINUX_USERNAME }}
-        # Note: You will need to add the jq installation and ngrok URL extraction
-        # directly into your linux-ssh.sh script as discussed previously.
-        # The linux-ssh.sh script must also echo "::set-output name=ngrok_ssh_url::THE_URL"
 
     - name: Send Ngrok URL to Telegram
       env:
-        # These are placeholders. You MUST add them as repository secrets.
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }} # Must be set in repo secrets
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}     # Must be set in repo secrets
       run: |
         NGROK_URL="${{ steps.setup_vm_and_ngrok.outputs.ngrok_ssh_url }}"
 
@@ -40,10 +37,9 @@ jobs:
           exit 1
         fi
 
-        # Make sure LINUX_USERNAME and LINUX_USER_PASSWORD are available as secrets
-        # and match 'krish' for your mining script's expectations.
+        # Assuming LINUX_USERNAME and LINUX_USER_PASSWORD are 'krish' as per your setup
         MESSAGE="Your GitHub Actions VM is ready!
-        SSH URL: $NGROROK_URL
+        SSH URL: $NGROK_URL
         Username: krish
         Password: krish"
 

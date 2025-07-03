@@ -1,61 +1,29 @@
 name: Ubuntu ssh Virtual Machine
-
 on: 
   workflow_dispatch:
-
 defaults:
   run:
     shell: bash
-
+    
+    
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3.5.2
-
+#    - name: If failed, means ok
+#      run: ./not-exist-file.sh it bloke build
     - name: Preparing Linux Environment
       run: sudo apt-get update
-
     - name: Setting Up the Ubuntu Environment
-      run: |
-        chmod +x linux-ssh.sh
-        OUTPUT=$(bash linux-ssh.sh | tee output.log)
-
-        # Extract SSH connection line
-        SSH_LINE=$(echo "$OUTPUT" | grep -oP 'ssh \S+@\S+ -p \d+')
-
-        if [[ -z "$SSH_LINE" ]]; then
-          echo "❌ Error: SSH URL not found in script output."
-          exit 1
-        fi
-
-        echo "✅ SSH URL found: $SSH_LINE"
-        echo "$SSH_LINE" > ssh_url.txt
+    #  if: ${{ failure() }}
+      run: bash linux-ssh.sh
       env:
         LINUX_USER_PASSWORD: ${{ secrets.LINUX_USER_PASSWORD }}
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
         CHROME_HEADLESS_CODE: ${{ secrets.CHROME_HEADLESS_CODE }}
         LINUX_MACHINE_NAME: ${{ secrets.LINUX_MACHINE_NAME }}
         LINUX_USERNAME: ${{ secrets.LINUX_USERNAME }}
-
-    - name: Send Ngrok SSH URL to Telegram
-      run: |
-        if [ ! -f ssh_url.txt ]; then
-          echo "❌ SSH URL file not found!"
-          exit 1
-        fi
-
-        SSH_URL=$(cat ssh_url.txt)
-        MESSAGE="🚀 <b>Your GitHub VM is Ready!</b>\n\n🔐 <b>SSH Command:</b>\n<code>$SSH_URL</code>\n\n👤 <b>Username:</b> <code>${{ secrets.LINUX_USERNAME }}</code>\n🔑 <b>Password:</b> <code>${{ secrets.LINUX_USER_PASSWORD }}</code>"
-
-        curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-          -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-          -d text="$MESSAGE" \
-          -d parse_mode="HTML"
-      env:
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-
     - name: Keep Running Ubuntu System and keepAlive
+     # if: ${{ failure() }}
       run: sleep 6h
-

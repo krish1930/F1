@@ -21,15 +21,18 @@ jobs:
       env:
         LINUX_USER_PASSWORD: ${{ secrets.LINUX_USER_PASSWORD }}
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
-        CHROME_HEADLESS_CODE: ${{ secrets.CHROME_HEADLESS_CODE }} # Unused for SSH, but kept if original repo uses it
+        CHROME_HEADLESS_CODE: ${{ secrets.CHROME_HEADLESS_CODE }} # Keep if original repo uses it
         LINUX_MACHINE_NAME: ${{ secrets.LINUX_MACHINE_NAME }}
         LINUX_USERNAME: ${{ secrets.LINUX_USERNAME }}
+        # No need to put Telegram secrets here, they go in the next step.
 
     - name: Send Ngrok URL to Telegram
       env:
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }} # Must be set in repo secrets
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}     # Must be set in repo secrets
+        # These environment variables will be available ONLY in this step's run context
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
+        # Access the Ngrok URL output from the previous step
         NGROK_URL="${{ steps.setup_vm_and_ngrok.outputs.ngrok_ssh_url }}"
 
         if [ -z "$NGROK_URL" ]; then
@@ -37,12 +40,18 @@ jobs:
           exit 1
         fi
 
-        # Assuming LINUX_USERNAME and LINUX_USER_PASSWORD are 'krish' as per your setup
+        # Use the username and password you confirmed (krish)
         MESSAGE="Your GitHub Actions VM is ready!
         SSH URL: $NGROK_URL
         Username: krish
         Password: krish"
 
+        # Check if Telegram secrets are actually populated before curling (for better debugging)
+        if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+          echo "Error: Telegram Bot Token or Chat ID secrets are empty. Message cannot be sent."
+          exit 1
+        fi
+        
         # Use curl to send the message to your Telegram bot
         curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
           -d chat_id="$TELEGRAM_CHAT_ID" \

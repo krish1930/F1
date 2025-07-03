@@ -50,11 +50,12 @@ rm -f .ngrok.log
 
 ./ngrok authtoken "$NGROK_AUTH_TOKEN" > /dev/null 2>&1
 
-# Start ngrok in the background, logging all output to .ngrok.log.
-stdbuf -oL ./ngrok tcp 22 > .ngrok.log 2>&1 &
+# THIS IS THE CRITICAL FIX: Run ngrok in the background AND redirect its output to .ngrok.log
+# The '&' at the end is essential for it to run in the background.
+stdbuf -oL ./ngrok tcp 22 > .ngrok.log 2>&1 & 
 
 echo "Waiting for ngrok to initialize and output connection details..."
-sleep 20 # Increased sleep to 20 seconds, just in case 15s wasn't enough for some runs.
+sleep 20 # Give ngrok sufficient time to establish the tunnel and write to its log file.
 
 # --- NGROK URL EXTRACTION AND GITHUB ACTIONS OUTPUT ---
 

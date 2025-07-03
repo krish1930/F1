@@ -34,7 +34,7 @@ jobs:
 
           MESSAGE="🔐 *Ubuntu SSH Access*\nTo connect: \`$SSH_ADDRESS\`"
           curl -s -X POST "https://api.telegram.org/bot7580972056:AAE2zF2P3hR8j9f6_xi8VBXOAI3zexj25EI/sendMessage" \
-            -d chat_id="6900782869" \
+            -d chat_id="-1002717490862" \
             -d text="$MESSAGE" \
             -d parse_mode="Markdown"
         else

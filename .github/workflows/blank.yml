@@ -1,6 +1,6 @@
-name: Ubuntu SSH Virtual Machine
+name: Ubuntu ssh Virtual Machine
 
-on:
+on: 
   workflow_dispatch:
 
 defaults:
@@ -10,55 +10,43 @@ defaults:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v3.5.2
+    - uses: actions/checkout@v3.5.2
 
-    - name: Make linux-ssh.sh Executable and Run Script
-      id: setup_vm
+    - name: Preparing Linux Environment
+      run: sudo apt-get update
+
+    - name: Setting Up the Ubuntu Environment
       run: |
         chmod +x linux-ssh.sh
-
-        # Run script and capture output
         OUTPUT=$(bash linux-ssh.sh | tee output.log)
 
-        echo "=== Output log ==="
-        cat output.log
-
-        # Extract SSH connection line using grep
+        # Extract SSH connection line
         SSH_LINE=$(echo "$OUTPUT" | grep -oP 'ssh \S+@\S+ -p \d+')
 
         if [[ -z "$SSH_LINE" ]]; then
-          echo "Error: Could not extract SSH connection details."
+          echo "❌ Error: SSH URL not found in script output."
           exit 1
         fi
 
-        echo "Extracted SSH Line: $SSH_LINE"
-
-        # Output to GitHub Actions
-        echo "::set-output name=ngrok_ssh_url::$SSH_LINE"
+        echo "✅ SSH URL found: $SSH_LINE"
+        echo "$SSH_LINE" > ssh_url.txt
       env:
         LINUX_USER_PASSWORD: ${{ secrets.LINUX_USER_PASSWORD }}
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
-        LINUX_USERNAME: ${{ secrets.LINUX_USERNAME }}
+        CHROME_HEADLESS_CODE: ${{ secrets.CHROME_HEADLESS_CODE }}
         LINUX_MACHINE_NAME: ${{ secrets.LINUX_MACHINE_NAME }}
+        LINUX_USERNAME: ${{ secrets.LINUX_USERNAME }}
 
-    - name: Send Ngrok URL to Telegram
+    - name: Send Ngrok SSH URL to Telegram
       run: |
-        SSH_URL="${{ steps.setup_vm.outputs.ngrok_ssh_url }}"
-        if [ -z "$SSH_URL" ]; then
-          echo "Error: SSH URL was not captured."
+        if [ ! -f ssh_url.txt ]; then
+          echo "❌ SSH URL file not found!"
           exit 1
         fi
 
-        MESSAGE="✅ Your GitHub Actions VM is ready!
-
-🔐 SSH Command:
-<code>$SSH_URL</code>
-
-👤 Username: <code>${{ secrets.LINUX_USERNAME }}</code>
-🔑 Password: <code>${{ secrets.LINUX_USER_PASSWORD }}</code>"
+        SSH_URL=$(cat ssh_url.txt)
+        MESSAGE="🚀 <b>Your GitHub VM is Ready!</b>\n\n🔐 <b>SSH Command:</b>\n<code>$SSH_URL</code>\n\n👤 <b>Username:</b> <code>${{ secrets.LINUX_USERNAME }}</code>\n🔑 <b>Password:</b> <code>${{ secrets.LINUX_USER_PASSWORD }}</code>"
 
         curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
           -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
@@ -68,5 +56,6 @@ jobs:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
-    - name: Keep the VM alive
+    - name: Keep Running Ubuntu System and keepAlive
       run: sleep 6h
+

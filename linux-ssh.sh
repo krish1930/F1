@@ -7,9 +7,6 @@ set -e
 # Enable debugging output - this will print every command executed
 set -x
 
-# These environment variables will be populated by GitHub Actions secrets.
-# We explicitly check if they are set.
-
 # Check for required environment variables
 if [[ -z "$NGROK_AUTH_TOKEN" ]]; then
   echo "Error: NGROK_AUTH_TOKEN is not set. Please add it to GitHub repository secrets."
@@ -46,47 +43,32 @@ chmod +x ./ngrok
 rm ngrok-v3-stable-linux-amd64.zip
 
 echo "### Starting ngrok proxy for port 22 ###"
-# Remove old log file if exists to ensure a clean capture
 rm -f .ngrok.log
+./ngrok authtoken "$NGROK_AUTH_TOKEN"
+stdbuf -oL ./ngrok tcp 22 > .ngrok.log 2>&1 &
 
-# Set ngrok authtoken
-./ngrok authtoken "$NGROK_AUTH_TOKEN" > /dev/null 2>&1
+# Give ngrok time to start and log the info
+echo "Waiting for ngrok to output connection string..."
+for i in {1..15}; do
+  sleep 2
+  NGROK_CONNECT_LINE=$(grep -m 1 "To connect: ssh" .ngrok.log || true)
+  if [[ -n "$NGROK_CONNECT_LINE" ]]; then
+    break
+  fi
+done
 
-# THIS IS THE CRITICAL LINE: Start ngrok in the background and redirect its output to .ngrok.log
-# The '&' at the end is essential for it to run in the background.
-stdbuf -oL ./ngrok tcp 22 > .ngrok.log 2>&1 & 
-
-echo "Waiting for ngrok to initialize and output connection details..."
-sleep 20 # Give ngrok sufficient time to establish the tunnel and write to its log file.
-
-# --- NGROK URL EXTRACTION AND GITHUB ACTIONS OUTPUT ---
-
-# FIRST CHECK: See if ngrok itself reported a failure in its log
-if grep -q "command failed" .ngrok.log; then
-  echo "NGROK_DEBUG: 'command failed' found in .ngrok.log. Exiting."
-  echo "NGROK_DEBUG: Contents of .ngrok.log:"
-  cat .ngrok.log # Print the log for debugging
+if [[ -z "$NGROK_CONNECT_LINE" ]]; then
+  echo "ERROR: Could not find 'To connect: ssh' line in ngrok log."
+  cat .ngrok.log
   exit 6
 fi
 
-# SECOND CHECK: Look for the specific "To connect: ssh" line
-NGROK_CONNECT_LINE=$(grep -m 1 "To connect: ssh" .ngrok.log)
-
-if [[ -z "$NGROK_CONNECT_LINE" ]]; then
-    echo "NGROK_DEBUG: 'To connect: ssh' line NOT found in .ngrok.log."
-    echo "NGROK_DEBUG: This might mean ngrok didn't start correctly or didn't output the connection details as expected."
-    echo "NGROK_DEBUG: Contents of .ngrok.log for debugging:"
-    cat .ngrok.log # This is crucial for debugging
-    exit 7
-fi
-
-# Extract the complete SSH connection string
+# Extract the SSH connection line
 EXTRACTED_SSH_URL=$(echo "$NGROK_CONNECT_LINE" | sed -E 's/.*(ssh [^ ]+@[^ ]+ -p [0-9]+).*/\1/')
 
 if [[ -z "$EXTRACTED_SSH_URL" ]]; then
-    echo "NGROK_DEBUG: Failed to extract SSH URL from the line: '$NGROK_CONNECT_LINE'"
-    echo "NGROK_DEBUG: The sed regex might need adjustment if ngrok's output format has changed."
-    exit 8
+  echo "ERROR: Failed to extract SSH URL from log line: '$NGROK_CONNECT_LINE'"
+  exit 7
 fi
 
 echo ""
@@ -94,6 +76,5 @@ echo "=========================================="
 echo "Successfully extracted Ngrok SSH URL: $EXTRACTED_SSH_URL"
 echo "=========================================="
 
+# GitHub Actions output
 echo "::set-output name=ngrok_ssh_url::${EXTRACTED_SSH_URL}"
-
-# --- END NGROK URL EXTRACTION AND GITHUB ACTIONS OUTPUT ---

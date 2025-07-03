@@ -4,31 +4,27 @@
 # Exit on any error
 set -e
 
-# Predefined environment variables (these will be overridden by GitHub secrets passed in blank.yml)
-# It's good practice to keep them for local testing, but remember secrets take precedence.
-LINUX_USER_PASSWORD="${LINUX_USER_PASSWORD:-krish}" # Use default if not set by env
-NGROK_AUTH_TOKEN="${NGROK_AUTH_TOKEN:-YOUR_DEFAULT_NGROK_TOKEN_HERE}" # Use default if not set by env
-LINUX_USERNAME="${LINUX_USERNAME:-krish}" # Use default if not set by env
-LINUX_MACHINE_NAME="${LINUX_MACHINE_NAME:-krish}" # Use default if not set by env
+# These environment variables will be populated by GitHub Actions secrets.
+# We explicitly check if they are set.
 
-# Check for required environment variables (these will typically be set by GitHub Actions secrets)
+# Check for required environment variables
 if [[ -z "$NGROK_AUTH_TOKEN" ]]; then
-  echo "Error: NGROK_AUTH_TOKEN is not set"
+  echo "Error: NGROK_AUTH_TOKEN is not set. Please add it to GitHub repository secrets."
   exit 2
 fi
 
 if [[ -z "$LINUX_USER_PASSWORD" ]]; then
-  echo "Error: LINUX_USER_PASSWORD is not set for user: $LINUX_USERNAME"
+  echo "Error: LINUX_USER_PASSWORD is not set for user: $LINUX_USERNAME. Please add it to GitHub repository secrets."
   exit 3
 fi
 
 if [[ -z "$LINUX_USERNAME" ]]; then
-  echo "Error: LINUX_USERNAME is not set"
+  echo "Error: LINUX_USERNAME is not set. Please add it to GitHub repository secrets."
   exit 4
 fi
 
 if [[ -z "$LINUX_MACHINE_NAME" ]]; then
-  echo "Error: LINUX_MACHINE_NAME is not set"
+  echo "Error: LINUX_MACHINE_NAME is not set. Please add it to GitHub repository secrets."
   exit 5
 fi
 
@@ -49,64 +45,62 @@ chmod +x ./ngrok
 rm ngrok-v3-stable-linux-amd64.zip
 
 echo "### Starting ngrok proxy for port 22 ###"
-# Remove old log file if exists
+# Remove old log file if exists to ensure a clean capture
 rm -f .ngrok.log
 
 # Set ngrok authtoken
 ./ngrok authtoken "$NGROK_AUTH_TOKEN" > /dev/null 2>&1
 
-# Start ngrok in the background and log to .ngrok.log
-./ngrok tcp 22 --log ".ngrok.log" &
+# Start ngrok in the background, logging all output (stdout and stderr) to .ngrok.log.
+# 'stdbuf -oL' forces line buffering, which helps ensure the "To connect" line is written promptly.
+stdbuf -oL ./ngrok tcp 22 > .ngrok.log 2>&1 &
 
-# Wait for ngrok to initialize and write the tunnel URL to the log
-echo "Waiting for ngrok to initialize..."
-sleep 15 # Increased sleep to ensure URL is written
+echo "Waiting for ngrok to initialize and output connection details..."
+sleep 15 # Give ngrok sufficient time to establish the tunnel and write to its log file.
 
-# Check for errors in ngrok log
+# Check for common ngrok startup failures in its log
 if grep -q "command failed" .ngrok.log; then
-  echo "Error: ngrok failed to start. Log content:"
-  cat .ngrok.log # Print log for debugging
+  echo "Error: ngrok failed to start or encountered a critical error. Log content:"
+  cat .ngrok.log # Print the log for debugging
   exit 6
 fi
 
-# --- START OF MODIFIED/ADDED CODE FOR NGROK URL EXTRACTION ---
+# --- NGROK URL EXTRACTION AND GITHUB ACTIONS OUTPUT ---
 
-# This part is crucial for passing the URL to GitHub Actions
-
-# Get the "To connect" line from the log. Use '-m 1' for the first match.
+# Get the "To connect" line from the ngrok log file.
+# '-m 1' ensures only the first matching line is returned.
 NGROK_CONNECT_LINE=$(grep -m 1 "To connect: ssh" .ngrok.log)
 
 if [[ -z "$NGROK_CONNECT_LINE" ]]; then
-    echo "Error: 'To connect: ssh' line not found in .ngrok.log. Ngrok may not have fully started or outputted the URL."
+    echo "Error: 'To connect: ssh' line not found in .ngrok.log."
+    echo "This might mean ngrok didn't start correctly, or didn't output the connection details as expected."
     echo "Contents of .ngrok.log for debugging:"
     cat .ngrok.log
-    exit 7 # Exit with a new error code to differentiate
+    exit 7 # Exit with a specific error code
 fi
 
-# Extract the SSH URL using sed. This regex is robust for the format.
-# Example: "ssh ***@4.tcp.us-cal-1.ngrok.io -p 12767"
+# Extract the complete SSH connection string (e.g., "ssh user@host -p port")
+# using a robust sed regex.
+# [^ ]+ matches one or more non-space characters.
 EXTRACTED_SSH_URL=$(echo "$NGROK_CONNECT_LINE" | sed -E 's/.*(ssh [^ ]+@[^ ]+ -p [0-9]+).*/\1/')
 
 if [[ -z "$EXTRACTED_SSH_URL" ]]; then
-    echo "Error: Failed to extract SSH URL from the 'To connect' line: $NGROK_CONNECT_LINE"
-    exit 8 # Exit with a new error code
+    echo "Error: Failed to extract the SSH URL from the line: '$NGROK_CONNECT_LINE'"
+    echo "The regex might need adjustment if ngrok's output format has changed."
+    exit 8 # Exit with a specific error code
 fi
 
-# Original echo for visual confirmation in the workflow logs
+# Echo the extracted URL for visibility in the GitHub Actions workflow logs
 echo ""
 echo "=========================================="
-echo "To connect: $EXTRACTED_SSH_URL"
+echo "Successfully extracted Ngrok SSH URL: $EXTRACTED_SSH_URL"
 echo "=========================================="
 
-# >>> THIS IS THE CRITICAL LINE TO PASS THE URL TO BLANK.YML <<<
+# Pass the extracted SSH URL as an output variable to the GitHub Actions workflow.
+# This is crucial for the 'blank.yml' to access it.
 echo "::set-output name=ngrok_ssh_url::${EXTRACTED_SSH_URL}"
 
-# --- END OF MODIFIED/ADDED CODE ---
+# --- END NGROK URL EXTRACTION AND GITHUB ACTIONS OUTPUT ---
 
-# No need for the old NGROK_URL/SSH_ADDRESS variables and logic anymore,
-# as EXTRACTED_SSH_URL now holds the correct string.
-# Also removed the old exit 7 because the new checks handle it more granularly.
-
-# Keep the script running (this usually isn't necessary in linux-ssh.sh
-# as blank.yml has the sleep 6h, but if it was meant to keep this script alive, keep it)
-# while true; do sleep 3600; done # If this was intended for a long-running service, otherwise remove.
+# The 'sleep 6h' to keep the VM alive is handled in 'blank.yml',
+# so no need for a long-running loop here.

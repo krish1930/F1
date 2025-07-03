@@ -1,6 +1,8 @@
 name: Ubuntu ssh Virtual Machine
+
 on:
   workflow_dispatch:
+
 defaults:
   run:
     shell: bash
@@ -16,47 +18,50 @@ jobs:
       run: sudo apt-get update
 
     - name: Setting Up the Ubuntu Environment and Starting Ngrok
-      id: setup_vm_and_ngrok # This ID is crucial to access outputs from linux-ssh.sh
-      run: bash linux-ssh.sh
+      id: setup_vm_and_ngrok
+      run: |
+        chmod +x linux-ssh.sh
+        OUTPUT=$(bash linux-ssh.sh | tee output.log)
+
+        # Extract the SSH connection line
+        SSH_LINE=$(echo "$OUTPUT" | grep -oP 'ssh \S+@\S+ -p \d+')
+
+        if [[ -z "$SSH_LINE" ]]; then
+          echo "Error: Could not extract SSH connection details."
+          exit 1
+        fi
+
+        echo "SSH Line: $SSH_LINE"
+        echo "::set-output name=ngrok_ssh_url::$SSH_LINE"
       env:
         LINUX_USER_PASSWORD: ${{ secrets.LINUX_USER_PASSWORD }}
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
-        CHROME_HEADLESS_CODE: ${{ secrets.CHROME_HEADLESS_CODE }} # Keep if original repo uses it
+        CHROME_HEADLESS_CODE: ${{ secrets.CHROME_HEADLESS_CODE }}
         LINUX_MACHINE_NAME: ${{ secrets.LINUX_MACHINE_NAME }}
         LINUX_USERNAME: ${{ secrets.LINUX_USERNAME }}
-        # No need to put Telegram secrets here, they go in the next step.
 
     - name: Send Ngrok URL to Telegram
       env:
-        # These environment variables will be available ONLY in this step's run context
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        SSH_URL: ${{ steps.setup_vm_and_ngrok.outputs.ngrok_ssh_url }}
       run: |
-        # Access the Ngrok URL output from the previous step
-        NGROK_URL="${{ steps.setup_vm_and_ngrok.outputs.ngrok_ssh_url }}"
-
-        if [ -z "$NGROK_URL" ]; then
+        if [ -z "$SSH_URL" ]; then
           echo "Error: Ngrok URL was not captured from linux-ssh.sh. Telegram message not sent."
           exit 1
         fi
 
-        # Use the username and password you confirmed (krish)
-        MESSAGE="Your GitHub Actions VM is ready!
-        SSH URL: $NGROK_URL
-        Username: krish
-        Password: krish"
+        MESSAGE="🚀 <b>GitHub Ubuntu VM Ready</b>\n\n🔐 <b>SSH Access</b>\n<code>$SSH_URL</code>\n\n👤 <b>Username:</b> krish\n🔑 <b>Password:</b> krish"
 
-        # Check if Telegram secrets are actually populated before curling (for better debugging)
         if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
           echo "Error: Telegram Bot Token or Chat ID secrets are empty. Message cannot be sent."
           exit 1
         fi
-        
-        # Use curl to send the message to your Telegram bot
+
         curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
           -d chat_id="$TELEGRAM_CHAT_ID" \
           -d text="$MESSAGE" \
           -d parse_mode="HTML"
-      
+
     - name: Keep Running Ubuntu System and keepAlive
-      run: sleep 6h # Keep the VM running for 6 hours
+      run: sleep 6h
